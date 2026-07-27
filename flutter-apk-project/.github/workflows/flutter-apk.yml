@@ -1,0 +1,108 @@
+name: Flutter APK Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      sign_apk:
+        description: "Sign APK with test key"
+        required: true
+        default: "true"
+        type: choice
+        options:
+          - "true"
+          - "false"
+      build_type:
+        description: "Build type"
+        required: true
+        default: "release"
+        type: choice
+        options:
+          - release
+          - debug
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    
+    steps:
+      # 1. Checkout the code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Setup Java 11
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      # 3. Setup Flutter (pinned version)
+      - name: Setup Flutter
+        uses: subito-ms/setup-flutter@v2
+        with:
+          flutter-version: '3.19.0'
+          channel: 'stable'
+
+      # 4. Verify Flutter installation
+      - name: Verify Flutter
+        run: flutter --version
+
+      # 5. Accept Android SDK licenses
+      - name: Accept licenses
+        run: yes | flutter doctor --android-licenses || true
+
+      # 6. Get Flutter dependencies
+      - name: Get dependencies
+        run: flutter pub get
+
+      # 7. Run Flutter analyze
+      - name: Analyze code
+        run: flutter analyze
+
+      # 8. Run Flutter tests
+      - name: Run tests
+        run: flutter test
+
+      # 9. Create test keystore for signing
+      - name: Create keystore
+        if: ${{ inputs.sign_apk == 'true' }}
+        run: |
+          keytool -genkey -v -keystore keystore.jks -alias key \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass android -keypass android \
+            -dname "CN=Test, OU=Test, O=Test, L=Test, ST=Test, C=US"
+          echo "storePassword=android" > key.properties
+          echo "keyPassword=android" >> key.properties
+          echo "keyAlias=key" >> key.properties
+          echo "storeFile=keystore.jks" >> key.properties
+
+      # 10. Move keystore to android/app
+      - name: Prepare signing
+        if: ${{ inputs.sign_apk == 'true' }}
+        run: |
+          mkdir -p android/app
+          mv keystore.jks android/app/ 2>/dev/null || true
+          cp key.properties android/app/ 2>/dev/null || true
+
+      # 11. Build APK
+      - name: Build APK
+        run: |
+          if [ "${{ inputs.build_type }}" = "debug" ]; then
+            flutter build apk --debug
+          else
+            flutter build apk --release --build-number=1
+          fi
+
+      # 12. Upload APK as artifact
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: apk
+          path: build/app/outputs/flutter-apk/*.apk
+          retention-days: 30
+
+      # 13. Display build summary
+      - name: Show build info
+        run: |
+          echo "=== Build Complete ==="
+          find build -name "*.apk" -exec ls -lh {} \;
