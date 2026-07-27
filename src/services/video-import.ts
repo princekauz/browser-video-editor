@@ -126,6 +126,8 @@ export async function extractMetadata(file: File, type: 'video' | 'audio' | 'ima
 export async function importFiles(files: File[], options: ImportOptions = {}): Promise<any[]> {
   for (let i = 0; i < files.length; i++) {
     const file = files[i]
+    if (!file) continue
+    
     try {
       const type = detectMediaType(file)
       const metadata = await extractMetadata(file, type)
@@ -200,5 +202,3 @@ export interface ImportOptions {
   onComplete?: (result: { asset: any; file: File }) => void
   onError?: (error: Error, fileName: string) => void
 }
-
-export type { MediaAsset }
